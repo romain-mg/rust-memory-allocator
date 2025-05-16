@@ -187,7 +187,7 @@ fn test_multiple_small_allocations() {
 }
 
 #[test]
-fn test_coalescing_after_multiple_frees() {
+fn test_free_coalescing_after_multiple_frees() {
     unsafe {
         let p1 = mm_malloc(16);
         let p2 = mm_malloc(16);

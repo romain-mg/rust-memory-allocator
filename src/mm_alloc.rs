@@ -28,7 +28,8 @@ pub unsafe fn mm_malloc(size: usize) -> *mut u8 {
     if size == 0 {
         return return_ptr;
     }
-    let bits_to_allocate = size + SIZE_OF_MEMORY_HEADER;
+    let aligned_size = (size + MEMORY_ALIGNMENT - 1) & !(MEMORY_ALIGNMENT - 1);
+    let bits_to_allocate = aligned_size + SIZE_OF_MEMORY_HEADER;
     // If no block has been created so far, create one
     if ROOT == null_mut() {
         let raw_root_pointer = sbrk(bits_to_allocate as isize);
@@ -51,7 +52,7 @@ pub unsafe fn mm_malloc(size: usize) -> *mut u8 {
         let mut curr = ROOT;
         let mut prev = null_mut();
         // Walk through the linked list to spot any block that would fit the requested size
-        while curr != null_mut() && ((*curr).size < size || !(*curr).free) {
+        while curr != null_mut() && ((*curr).size < aligned_size || !(*curr).free) {
             prev = curr;
             curr = (*curr).next;
         }
@@ -65,7 +66,7 @@ pub unsafe fn mm_malloc(size: usize) -> *mut u8 {
             block_pointer.write(MemoryHeader {
                 prev,
                 next: null_mut(),
-                size: size,
+                size: aligned_size,
                 free: false,
                 magic: return_ptr as isize ^ MAGIC,
             });
@@ -76,21 +77,18 @@ pub unsafe fn mm_malloc(size: usize) -> *mut u8 {
             (*curr).free = false;
             return_ptr = curr.add(1) as *mut u8;
             // Split the block into 2 blocks if there is enough space to allocate at least one byte
-            let unaligned_memory_block_size = size + SIZE_OF_MEMORY_HEADER;
-            let aligned_memory_block_size =
-                unaligned_memory_block_size + unaligned_memory_block_size % MEMORY_ALIGNMENT;
-            if (*curr).size > size + SIZE_OF_MEMORY_HEADER + ONE_BYTE {
+            if (*curr).size > aligned_size + SIZE_OF_MEMORY_HEADER + ONE_BYTE {
                 let current_next = (*curr).next;
                 // compute precisely the location of new_next
                 let curr_as_u8_ptr = curr as *mut u8;
                 let new_next_as_u8_ptr = curr_as_u8_ptr
                     .add(SIZE_OF_MEMORY_HEADER_IN_BYTES)
-                    .add(size / ONE_BYTE);
+                    .add(aligned_size / ONE_BYTE);
                 let new_next = new_next_as_u8_ptr as *mut MemoryHeader;
                 new_next.write(MemoryHeader {
                     prev: curr,
                     next: current_next,
-                    size: (*curr).size - (size + SIZE_OF_MEMORY_HEADER),
+                    size: (*curr).size - (aligned_size + SIZE_OF_MEMORY_HEADER),
                     free: true,
                     magic: new_next.add(1) as isize ^ MAGIC,
                 });
@@ -100,7 +98,7 @@ pub unsafe fn mm_malloc(size: usize) -> *mut u8 {
         }
     }
     // Zeroing the memory
-    for i in 0..size {
+    for i in 0..aligned_size {
         let ptr = return_ptr.add(i);
         *ptr = 0;
     }
